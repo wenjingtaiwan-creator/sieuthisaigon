@@ -163,13 +163,23 @@
   </div>
 </div>
 
+<div class="card-overlay" id="eventOverlay" style="display: none;">
+  <div class="card" style="border: 4px solid #9c27b0;">
+    <h3 id="eventTitle" style="color:#9c27b0;">❓ 命運機會</h3>
+    <div id="eventEmoji" style="font-size:60px;">🃏</div>
+    <div id="eventText" style="font-size:22px; font-weight:bold; margin:20px 0; line-height:1.5;"></div>
+    <div id="eventAmount" style="font-size:28px; font-weight:bold;"></div>
+    <button class="btn-submit" style="background:#9c27b0; margin-top:20px;" onclick="closeEventAndEndTurn()">確認並繼續</button>
+  </div>
+</div>
+
 <script>
-  // 音效
   const sfxMove = new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'); 
   const sfxCorrect = new Audio('https://assets.mixkit.co/active_storage/sfx/113/113-preview.mp3'); 
   const sfxWrong = new Audio('https://assets.mixkit.co/active_storage/sfx/2942/2942-preview.mp3'); 
   const sfxDice = new Audio('https://assets.mixkit.co/active_storage/sfx/2947/2947-preview.mp3');
   const sfxGoodLuck = new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3');
+  const sfxBadLuck = new Audio('https://assets.mixkit.co/active_storage/sfx/2954/2954-preview.mp3');
   const sfxWow = new Audio('https://assets.mixkit.co/active_storage/sfx/2972/2972-preview.mp3');
   const bgm = new Audio('https://www.chosic.com/wp-content/uploads/2021/04/My-Full-Moon-Piano-Music.mp3');
   bgm.loop = true; bgm.volume = 0.2;
@@ -178,6 +188,13 @@
   let selectedCount = 4;
   let speechFailCount = 0;
   const diceFaces = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+  const chances = [
+    { text: "在超市亂跑被罰<br><small>chạy lung tung bị phạt</small>", amount: -100000 },
+    { text: "幸運獲得購物金<br><small>nhận được tiền mua sắm</small>", amount: 150000 },
+    { text: "捏壞水果被罰<br><small>bóp nát trái cây bị phạt</small>", amount: -50000 },
+    { text: "幫忙打掃超市獲得獎勵<br><small>giúp dọn dẹp siêu thị</small>", amount: 100000 }
+  ];
 
   const board = [
     { zh: "超市門口", vi: "cửa ra vào", emoji: "🛒", cat: "corner", price: 0, pos: {r:1, c:1} },
@@ -227,7 +244,6 @@
     let btns = document.querySelectorAll('.num-btn');
     btns.forEach(b => b.classList.remove('active'));
     btns[n-1].classList.add('active');
-    // 使用者點擊按鈕時，嘗試啟動音效
     bgm.play().catch(() => {});
     renderNameInputs();
   }
@@ -275,7 +291,7 @@
 
     let centerHtml = `<div class="dashboard-content">
         <div class="center-control-bar">
-            <div style="color:${cp.color}; font-weight:bold;">${cp.name} 的回合</div>
+            <div style="color:${cp.color}; font-weight:bold;">${cp.emoji} ${cp.name} 的回合</div>
             <div class="dice-btn ${cp.magicDoor?'magic-mode':''}" onclick="triggerRoll()">
                 <span class="dice-visual" id="diceVisual">${cp.magicDoor?'✨':'🎲'}</span>
                 <span>${cp.magicDoor?'傳送模式':'點擊擲骰'}</span>
@@ -334,22 +350,12 @@
     let itv = setInterval(() => {
         cp.pos = (cp.pos + 1) % board.length;
         sfxMove.play();
-        // 🎫 檢查是否經過門口 (0號格)
-        if (cp.pos === 0) {
-            passedStartInThisTurn = true;
-        }
+        if (cp.pos === 0) passedStartInThisTurn = true;
         renderMap();
         if (++count >= steps) { 
-            clearInterval(itv); 
-            isRolling = false;
-            if (passedStartInThisTurn) {
-                // 如果最後停在0號格，讓 triggerTask 處理；如果只是經過，這裡給錢。
-                if (cp.pos !== 0) {
-                    cp.money += 20000;
-                    sfxGoodLuck.play();
-                    updateUI();
-                    alert("🎟️ 經過超市門口，獲得 20,000 ₫ 購物金！");
-                }
+            clearInterval(itv); isRolling = false;
+            if (passedStartInThisTurn && cp.pos !== 0) {
+                cp.money += 20000; sfxGoodLuck.play(); updateUI(); alert("🎟️ 經過超市門口，獲得 20,000 ₫ 購物金！");
             }
             triggerTask(cp.pos); 
         }
@@ -361,19 +367,27 @@
     speechFailCount = 0;
     document.getElementById('giveupBtn').style.display = "none";
 
-    // 🎯 剛好停在超市門口
+    // 1. 超市門口領錢
     if (idx === 0) {
-        cp.money += 20000;
-        sfxGoodLuck.play();
-        updateUI();
-        alert("🎁 抵達超市門口，領取 20,000 ₫ 購物金！");
-        endTurn();
+        cp.money += 20000; sfxGoodLuck.play(); updateUI(); alert("🎁 抵達超市門口，領取 20,000 ₫ 購物金！");
+        endTurn(); return;
+    }
+
+    // 2. 命運格觸發 (修復處)
+    if (currentItemObj.cat === 'chance') {
+        const ev = chances[Math.floor(Math.random() * chances.length)];
+        cp.money += ev.amount;
+        if (ev.amount >= 0) sfxGoodLuck.play(); else sfxBadLuck.play();
+        showChanceEvent(ev);
         return;
     }
 
+    // 3. 神奇門
     if (currentItemObj.cat === 'corner') {
         cp.magicDoor = true; updateUI(); alert("✨ 抵達神奇門，下回合可任意傳送！"); endTurn(); return; 
     }
+
+    // 4. 商品格
     if (currentItemObj.price === 0) { endTurn(); return; }
     
     document.getElementById('locationName').innerText = "📍 " + currentItemObj.zh;
@@ -386,10 +400,26 @@
     document.getElementById('userInput').value = ""; document.getElementById('feedback').innerText = "";
   }
 
+  function showChanceEvent(ev) {
+    document.getElementById('eventText').innerHTML = ev.text;
+    const amountEl = document.getElementById('eventAmount');
+    if (ev.amount !== 0) {
+        amountEl.innerText = (ev.amount > 0 ? "+" : "") + ev.amount.toLocaleString() + " ₫";
+        amountEl.style.color = ev.amount > 0 ? "#4caf50" : "#f44336";
+    } else { amountEl.innerText = ""; }
+    document.getElementById('eventOverlay').style.display = "flex";
+    updateUI();
+  }
+
+  function closeEventAndEndTurn() {
+    document.getElementById('eventOverlay').style.display = "none";
+    endTurn();
+  }
+
   function checkTyping() {
     if (document.getElementById('userInput').value.trim().toLowerCase() === currentItemObj.vi.toLowerCase()) {
         sfxCorrect.play(); document.getElementById('step1Area').style.display = "none"; document.getElementById('step2Area').style.display = "block";
-    } else { sfxWrong.play(); alert("拼寫有誤！"); }
+    } else { sfxWrong.play(); alert("拼寫不對喔！"); }
   }
 
   function speakVietnamese() { new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=vi&client=tw-ob&q=${encodeURIComponent(currentItemObj.vi)}`).play(); }
@@ -407,7 +437,7 @@
             if(speechFailCount >= 3) document.getElementById('giveupBtn').style.display = "inline-block";
         }
     };
-    rec.onend = () => document.getElementById('recordBtn').innerText = "🎤 測發音";
+    rec.onend = () => document.getElementById('recordBtn').innerText = "🎤 測口說";
   }
 
   function giveUpSpeech() { cp.money -= 10000; successSpeech(); }
